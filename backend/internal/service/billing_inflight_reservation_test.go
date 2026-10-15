@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
+	gocache "github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/require"
 )
 
@@ -79,6 +80,8 @@ func newInflightEstimateGateway(t *testing.T, channelService *ChannelService) *G
 		billingService: billing,
 		resolver:       NewModelPricingResolver(channelService, billing),
 		channelService: channelService,
+		// 与生产共用缓存的方式保持一致，避免每次估算都新建清理协程。
+		userGroupRateCache: gocache.New(defaultUserGroupRateCacheTTL, time.Minute),
 	}
 }
 
