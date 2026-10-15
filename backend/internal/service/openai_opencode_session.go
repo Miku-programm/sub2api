@@ -53,9 +53,10 @@ func openCodeInboundBodies(c *gin.Context) [][]byte {
 // requests. OpenCode Go requires a per-conversation value from 2026-09-05
 // (MissingSessionID). Prefer caller headers, then the documented body session
 // fields (OpenAI prompt_cache_key / Anthropic metadata.user_id), then any
-// already applied account override. A generated UUID is last-resort only for
-// probes and clients that omit every stable identifier — a new UUID each turn
-// would miss upstream prompt cache.
+// already applied account override. Outside the scoped free-model adapter,
+// a generated UUID is last-resort only for probes and clients that omit every
+// stable identifier. The free-model adapter uses native OpenCode IDs and a
+// bounded tenant-isolated mapping instead, without touching request bodies.
 func applyOpenCodeSessionHeader(c *gin.Context, account *Account, targetURL string, headers http.Header, bodies ...[]byte) {
 	if account == nil || account.Type != AccountTypeAPIKey || headers == nil {
 		return
@@ -65,7 +66,15 @@ func applyOpenCodeSessionHeader(c *gin.Context, account *Account, targetURL stri
 	}
 
 	payloads := append(openCodeInboundBodies(c), bodies...)
-	sessionID := resolveOpenCodeSessionID(c, headers, shouldGenerateOpenCodeSession(account, targetURL), payloads...)
+	var sessionID string
+	if model := openCodeFreeIdentityModel(account, targetURL, bodies...); model != "" {
+		sessionID = resolveOpenCodeFreeSession(c, account, headers, payloads...)
+		// This shared hook runs after header overrides and sees the mapped body.
+		// The scoped defaults explicitly yield to configured header overrides.
+		applyOpenCodeFreeHeaders(c, account, headers, model)
+	} else {
+		sessionID = resolveOpenCodeSessionID(c, headers, shouldGenerateOpenCodeSession(account, targetURL), payloads...)
+	}
 	if sessionID == "" {
 		return
 	}
