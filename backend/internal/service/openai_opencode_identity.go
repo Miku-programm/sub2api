@@ -81,6 +81,14 @@ type openCodeSessionCacheEntry struct {
 
 var openCodeFreeSessions openCodeSessionCache
 
+func openCodeSessionEntry(element *list.Element) *openCodeSessionCacheEntry {
+	entry, ok := element.Value.(*openCodeSessionCacheEntry)
+	if !ok {
+		panic("invalid OpenCode session cache entry")
+	}
+	return entry
+}
+
 func (cache *openCodeSessionCache) resolve(key [32]byte) string {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
@@ -89,7 +97,7 @@ func (cache *openCodeSessionCache) resolve(key [32]byte) string {
 		cache.entries = make(map[[32]byte]*list.Element)
 	}
 	for old := cache.lru.Back(); old != nil; old = cache.lru.Back() {
-		entry := old.Value.(*openCodeSessionCacheEntry)
+		entry := openCodeSessionEntry(old)
 		if now.Before(entry.expires) {
 			break
 		}
@@ -97,14 +105,14 @@ func (cache *openCodeSessionCache) resolve(key [32]byte) string {
 		cache.lru.Remove(old)
 	}
 	if element := cache.entries[key]; element != nil {
-		entry := element.Value.(*openCodeSessionCacheEntry)
+		entry := openCodeSessionEntry(element)
 		entry.expires = now.Add(24 * time.Hour)
 		cache.lru.MoveToFront(element)
 		return entry.id
 	}
 	if cache.lru.Len() >= 4096 {
 		old := cache.lru.Back()
-		delete(cache.entries, old.Value.(*openCodeSessionCacheEntry).key)
+		delete(cache.entries, openCodeSessionEntry(old).key)
 		cache.lru.Remove(old)
 	}
 	id := newOpenCodeNativeSession()
